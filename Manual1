@@ -2,31 +2,35 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
-#include "opencv2/nonfree/nonfree.hpp"
 #include <iostream>
-#include "opencv2/calib3d/calib3d.hpp"
 
 using namespace cv;
 using namespace std;
 
 
-class Manual{
-	
+class Manual {
+
 public: Manual(string pathImgCT, string pathImgMRI);
 		Mat imgct;
 		Mat imgmri;
-		Mat common;
 		int angle;
 		int x;
 		int y;
 		float scale;
 		void info();
-		void show(Mat);
-		void rotate_image(Mat &imgsmall, Mat &imgbig, Mat &results, int angle, Point position);
-		void scale_image(Mat &, Mat &, double );
+		//void rotate_image(Mat &imgsmall, Mat &imgbig, Mat &results, int angle, Point position);
+		void rotate_image(Mat &);
+		void scale_image(Mat &, Mat &, double);
+		void mergeImages(Mat &);
+		
+		void setAngle(float);
+		void changeAngle(float);
+			
+		
+		
 };
 
-Manual::Manual(string pathImgCT, string pathImgMRI){
+Manual::Manual(string pathImgCT, string pathImgMRI) {
 	imgct = imread(pathImgCT);
 	imgmri = imread(pathImgMRI);
 	angle = 0;
@@ -35,63 +39,102 @@ Manual::Manual(string pathImgCT, string pathImgMRI){
 	scale = 1.0;
 }
 
-void Manual::info(){
-	cout << "imgct size: " << imgct.size() << endl; 
-	cout << "mri size: "   << imgmri.size() << endl;
-	cout << "angle: "      << angle << endl;
-	cout << "x: "          << x << ", y: " << y << endl;
-	cout << "scale: "	   << scale << endl;
-
+void Manual::info() {
+	cout << "imgct size: " << imgct.size() << endl;
+	cout << "mri size: " << imgmri.size() << endl;
+	cout << "angle: " << angle << endl;
+	cout << "x: " << x << ", y: " << y << endl;
+	cout << "scale: " << scale << endl;
 }
 
-void Manual::show(Mat img){
-	
-	imshow("Window", img);
-	waitKey(0);
-}
-
-void Manual::scale_image(Mat &imginp, Mat &imgout, double scale){
-
+void Manual::scale_image(Mat &imginp, Mat &imgout, double scale) {
 	resize(imginp, imgout, Size(round(imginp.cols*scale), round(imginp.rows*scale)));
 	cout << "przed skalowaniem: " << imginp.size() << " po skalowaniu: " << imgout.size() << endl;
 }
 
 
-void Manual::rotate_image(Mat &imgsmall, Mat &imgbig, Mat &results, int angle, Point position){
+void Manual::rotate_image(Mat &result) {
+	Point2f pc(this->imgmri.cols / 2., this->imgmri.rows / 2.);
+	Mat r = getRotationMatrix2D(pc, this->angle, 1.0);
 
-	//Mat black(1500, 1500, 0);
-	Point2f pc(imgsmall.cols / 2., imgsmall.rows / 2.);
-	Mat r = getRotationMatrix2D(pc, angle, 1.0);
+	cout << "Rotate matrix:" << endl;
+	cout << r << endl;
 
-
-	Mat rotated;
-	//warpAffine(resized, rotated, r, resized.size());
-
-	Rect bbox = cv::RotatedRect(pc, imgsmall.size(), angle).boundingRect();
+	Rect bbox = cv::RotatedRect(pc, this->imgmri.size(), this->angle).boundingRect();
 	r.at<double>(0, 2) += bbox.width / 2.0 - pc.x;
 	r.at<double>(1, 2) += bbox.height / 2.0 - pc.y;
 
 	cv::Mat dst;
-	cv::warpAffine(imgsmall, dst, r, bbox.size());
+	cv::warpAffine(this->imgmri, dst, r, bbox.size());
 
-	imgbig.copyTo(results);
-	dst.copyTo(results(cv::Rect(position.x, position.y, dst.cols, dst.rows)));
+	//zwrocic maly obrocony obraz
+	dst.copyTo(result);
 }
 
 
-void main(){
-	string path1 = "D:/codes/Krzycha/test_img.png";
-	string path2 = "D:/codes/Krzycha/test_img_small.jpg";
+void Manual::setAngle(float new_angle)
+{
+	this->angle = new_angle;
+	cout << "Proszę wprowadzić kąt obrotu " << endl;
+	cin >> new_angle;
+}
 
-	Manual test (path1, path2);
+/*void Manual::changeAngle(float changes)
+{
+	this->angle = this->angle + changes;
+}
+/*/
+
+
+
+
+void Manual::mergeImages(Mat &result) {
+
+	Mat rotated;
+
+	if (this->scale != 1) {
+		scale_image(this->imgmri, this->imgmri, this->scale);
+	}
+	else
+	{
+		this->imgmri.copyTo(rotated);
+	}
+
+	if (this->angle != 0) {
+		rotate_image(rotated);
+	}
+
+
+	this->imgct.copyTo(result);
+
+	for (int i = 0; i < rotated.cols; i++) {
+		for (int j = 0; j < rotated.rows; j++)
+		{
+			if (rotated.at<Vec3b>(j, i).val[0] != 0 && rotated.at<Vec3b>(j, i).val[1] != 0 &&
+				rotated.at<Vec3b>(j, i).val[2] != 0)
+			{
+				result.at<Vec3b>(j + this->y, i + this->x) = rotated.at<Vec3b>(j, i);
+			}
+		}
+	}
+}
+
+
+void main() {
+	string path1 = "C:\Projects\Manual\dicom1";
+	string path2 = "C:\Projects\Manual\dicom2";
+
+	Manual test(path1, path2);
 	test.info();
-	//Mat img3;
-	//test.scale_image(test.mri, img3, 0.3);
-	//test.show(img3);
+	test.setAngle(90); /obrocenie o kąt 90 
 
-	test.scale_image(test.imgmri, test.imgmri, 0.5);
+	test.scale = 0.5; //scala obrazu
+	test.x = 400; //[rzesuniecie w pikselach
+	test.y = 200;
 
-	test.rotate_image(test.imgmri, test.imgct, test.common, 50, Point(100, 100));
-	
-	test.show(test.common);
+	Mat result;
+	test.mergeImages(result);
+
+	imshow("Final results", result);
+	cvWaitKey(0);
 }
